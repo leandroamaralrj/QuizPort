@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz Interativo — Revisão de Língua Portuguesa (1º ano)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Animações sutis para feedback */
+    @keyframes shake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(2px);} 30%, 50%, 70% { transform: translateX(-4px);} 40%, 60% { transform: translateX(4px);} }
+    .animate-shake { animation: shake 0.35s linear both; }
+
+    .option-disabled { pointer-events: none; opacity: 0.7; }
+
+    /* Estilo básico de "chip" para opções arrastáveis (se usado) */
+    .chip { @apply inline-flex items-center px-3 py-1 rounded-full bg-slate-100 border border-slate-300 cursor-grab; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <header class="text-center mb-6">
+      <h1 class="text-3xl font-bold">Quiz Interativo — Conteúdos do arquivo anexado</h1>
+      <p class="text-slate-600">Assuntos: Adjetivos (definição, flexões, graus, compostos, locução adjetiva) e Pronomes (classes, usos, tratamento).</p>
+    </header>
+
+    <main id="app" class="space-y-4">
+      <!-- Tela inicial -->
+      <section id="start-screen" class="bg-white rounded-2xl shadow p-6">
+        <p class="text-slate-700 mb-4">Cada rodada traz <strong>20 questões aleatórias</strong> de um banco com 40. Responda e veja o feedback imediato com explicações. Boa sorte!</p>
+        <button id="btn-start" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition active:scale-[.98]">Começar o Quiz</button>
+      </section>
+
+      <!-- Card do Quiz -->
+      <section id="quiz-card" class="hidden bg-white rounded-2xl shadow p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="text-sm text-slate-500" id="progress">Questão 1/20</div>
+          <div class="w-40 bg-slate-200 rounded-full h-2 overflow-hidden"><div id="bar" class="h-2 bg-indigo-600" style="width:0%"></div></div>
+        </div>
+
+        <h2 id="question-stem" class="text-xl font-semibold mb-3"></h2>
+        <div id="question-extra" class="text-slate-600 mb-3"></div>
+
+        <div id="options" class="space-y-2"></div>
+
+        <div id="explanation" class="mt-4 hidden p-4 rounded-xl border"></div>
+
+        <div class="mt-6 flex justify-end">
+          <button id="btn-next" class="px-5 py-3 rounded-2xl bg-slate-900 text-white font-semibold disabled:opacity-50">Próxima Pergunta</button>
+        </div>
+      </section>
+
+      <!-- Tela de resultados -->
+      <section id="result-screen" class="hidden bg-white rounded-2xl shadow p-6 text-center">
+        <h3 class="text-2xl font-bold mb-2">Resultados</h3>
+        <p id="score-text" class="text-lg"></p>
+        <p id="score-msg" class="mt-2 text-slate-700"></p>
+        <button id="btn-restart" class="mt-6 px-5 py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition">Refazer o Quiz</button>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // Utilidades
+    const shuffle = (arr) => arr.map(v => ({ v, r: Math.random() })).sort((a,b)=>a.r-b.r).map(({v})=>v);
+
+    // Tipos suportados: mcq, vf, associacao, curta, lacunas
+    // Cada questão possui: id, type, stem, options/pares/answer, explanation, extra(opcional)
+
+    const BANK = [
+      // === ADJETIVOS: DEFINIÇÃO E TIPOS ===
+      { id: 1, type: 'mcq', stem: 'O que são adjetivos?', options: [
+          {text:'Palavras que nomeiam seres, ações e estados.', correct:false},
+          {text:'Palavras que caracterizam o substantivo, indicando qualidades, estados ou origem.', correct:true},
+          {text:'Palavras que exprimem circunstâncias como tempo e modo.', correct:false},
+          {text:'Palavras que substituem substantivos para evitar repetições.', correct:false}
+        ], explanation:'Adjetivos caracterizam o substantivo (qualidade, estado, origem), conforme a revisão.' },
+      { id: 2, type: 'vf', stem: 'Adjetivos podem indicar cor, forma, tamanho e intensidade.', answer: true, explanation:'Os adjetivos têm diversos tipos, incluindo cor, forma, tamanho e intensidade.' },
+      { id: 3, type: 'vf', stem: '“Mexicano” e “argentino” são exemplos de adjetivos pátrios.', answer: true, explanation:'Adjetivos pátrios indicam origem/nacionalidade: brasileiro, mexicano, argentino, etc.' },
+      { id: 4, type: 'mcq', stem: 'Assinale a alternativa que traz uma locução adjetiva.', options: [
+          {text:'anel dourado', correct:false},
+          {text:'anel de ouro', correct:true},
+          {text:'anel ouroso', correct:false},
+          {text:'anel valioso', correct:false}
+        ], explanation:'Locução adjetiva é uma expressão (geralmente preposicionada) com valor de adjetivo: “de ouro”.' },
+      { id: 5, type: 'mcq', stem: 'Assinale o exemplo de adjetivo composto.', options: [
+          {text:'alegre', correct:false},
+          {text:'bem-educado', correct:true},
+          {text:'alto', correct:false},
+          {text:'feliz', correct:false}
+        ], explanation:'Adjetivos compostos são formados por mais de uma palavra, como “bem-educado”, “azul-claro”.' },
+      { id: 6, type: 'vf', stem: '“Azul-claro” é um adjetivo composto.', answer: true, explanation:'Exemplo indicado no material: “azul-claro”.' },
+
+      // === FLEXÃO DE GÊNERO E NÚMERO ===
+      { id: 7, type: 'mcq', stem: 'Assinale a alternativa com flexão correta de gênero do adjetivo.', options: [
+          {text:'menino bonita', correct:false},
+          {text:'menina bonito', correct:false},
+          {text:'menino bonito / menina bonita', correct:true},
+          {text:'menino bonita / menina bonito', correct:false}
+        ], explanation:'Adjetivos concordam em gênero e número com o substantivo: bonito/bonita.' },
+      { id: 8, type: 'mcq', stem: 'Assinale a alternativa com flexão correta de número do adjetivo.', options: [
+          {text:'roupa grandes', correct:false},
+          {text:'roupas grande', correct:false},
+          {text:'roupas grandes', correct:true},
+          {text:'roupa grandez', correct:false}
+        ], explanation:'“Grande” no plural: “grandes”, concordando com “roupas”.' },
+      { id: 9, type: 'vf', stem: 'Adjetivos flexionam em gênero (masc./fem.) e número (sing./pl.).', answer: true, explanation:'O material destaca essa flexão como regra geral.' },
+      { id: 10, type: 'curta', stem: 'Escreva o par feminino de “bonito”.', answer: ['bonita'], explanation:'Concordância de gênero: bonito → bonita.' },
+
+      // === FLEXÃO DE GRAU (COMPARATIVO / SUPERLATIVO) ===
+      { id: 11, type: 'mcq', stem: 'Qual opção NÃO é comparativo?', options: [
+          {text:'mais alto que', correct:false},
+          {text:'tão alto quanto', correct:false},
+          {text:'menos alto que', correct:false},
+          {text:'altíssimo', correct:true}
+        ], explanation:'“Altíssimo” é superlativo absoluto; as demais expressam comparação.' },
+      { id: 12, type: 'vf', stem: 'Comparativo pode indicar superioridade, igualdade ou inferioridade.', answer: true, explanation:'O material cita os três tipos de comparativo.' },
+      { id: 13, type: 'mcq', stem: '“O aluno é o mais dedicado da turma” é exemplo de:', options: [
+          {text:'superlativo absoluto', correct:false},
+          {text:'superlativo relativo', correct:true},
+          {text:'comparativo de superioridade', correct:false},
+          {text:'comparativo de igualdade', correct:false}
+        ], explanation:'Há comparação dentro de um conjunto (“da turma”): superlativo relativo.' },
+      { id: 14, type: 'curta', stem: 'Complete com um superlativo absoluto de “feliz”. (ex.: ___ )', answer:['felicíssimo','muito feliz'], explanation:'Formas possíveis: “felicíssimo” (morf.): ou perifrástica: “muito feliz”.' },
+
+      // === PRONOMES: DEFINIÇÃO E CLASSIFICAÇÃO ===
+      { id: 15, type: 'mcq', stem: 'O que são pronomes?', options: [
+          {text:'Palavras que caracterizam o substantivo.', correct:false},
+          {text:'Palavras que substituem ou acompanham substantivos, indicando as pessoas do discurso.', correct:true},
+          {text:'Palavras que exprimem circunstâncias.', correct:false},
+          {text:'Palavras invariáveis que ligam orações.', correct:false}
+        ], explanation:'Definição apresentada no material: substituem/acompanham substantivos e indicam as pessoas do discurso.' },
+      { id: 16, type: 'vf', stem: 'Pronomes pessoais podem ser do caso reto ou oblíquo.', answer: true, explanation:'Classificação apresentada: reto (eu, tu, ele...) e oblíquo (me, te, o, a...).' },
+      { id: 17, type: 'mcq', stem: 'Assinale a sequência que traz apenas pronomes pessoais do caso reto.', options: [
+          {text:'me, te, nos, vos', correct:false},
+          {text:'eu, tu, ele, nós, vós, eles', correct:true},
+          {text:'meu, tua, sua, nosso', correct:false},
+          {text:'este, essa, aquele', correct:false}
+        ], explanation:'Reto: eu, tu, ele, nós, vós, eles.' },
+      { id: 18, type: 'mcq', stem: 'Assinale apenas pronomes possessivos.', options: [
+          {text:'meu, tua, sua, nosso', correct:true},
+          {text:'eu, tu, ele', correct:false},
+          {text:'este, essa, aquele', correct:false},
+          {text:'alguém, ninguém, algo', correct:false}
+        ], explanation:'Possessivos indicam posse: meu, tua, sua, nosso.' },
+      { id: 19, type: 'mcq', stem: 'Assinale apenas pronomes demonstrativos.', options: [
+          {text:'este, essa, aquele', correct:true},
+          {text:'me, te, se', correct:false},
+          {text:'meu, teu, nosso', correct:false},
+          {text:'qual, quanto, quem', correct:false}
+        ], explanation:'Demonstrativos: este/essa/aquele etc.' },
+      { id: 20, type: 'mcq', stem: 'Assinale apenas pronomes indefinidos.', options: [
+          {text:'alguém, ninguém, algo, tudo', correct:true},
+          {text:'eu, tu, ele', correct:false},
+          {text:'meu, tua, sua', correct:false},
+          {text:'este, essa, aquele', correct:false}
+        ], explanation:'Indefinidos referem-se de forma vaga: alguém, ninguém, algo, tudo.' },
+      { id: 21, type: 'mcq', stem: 'Assinale apenas pronomes interrogativos.', options: [
+          {text:'qual, quanto, quem', correct:true},
+          {text:'me, te, se', correct:false},
+          {text:'meu, teu', correct:false},
+          {text:'este, esse', correct:false}
+        ], explanation:'Interrogativos: qual, quanto, quem.' },
+
+      // === USO: POSSE, AMBIGUIDADE, TRATAMENTO, REGRAS ===
+      { id: 22, type: 'vf', stem: 'Pronomes possessivos indicam posse.', answer: true, explanation:'Conforme a revisão: “meu, tua, sua, nosso” etc.' },
+      { id: 23, type: 'vf', stem: 'O uso de “meu/minha” nunca causa ambiguidade.', answer: false, explanation:'O material observa que “meu/minha” pode gerar ambiguidade dependendo do referente.' },
+      { id: 24, type: 'mcq', stem: 'Assinale a forma de tratamento usada para formalidade.', options: [
+          {text:'Vossa Excelência / Vossa Senhoria', correct:true},
+          {text:'tu / você', correct:false},
+          {text:'meu / minha', correct:false},
+          {text:'alguém / ninguém', correct:false}
+        ], explanation:'Pronomes de tratamento para formalidade incluem “Vossa Excelência”, “Vossa Senhoria”.' },
+      { id: 25, type: 'vf', stem: 'Pronomes pessoais oblíquos podem ser usados após preposições livremente.', answer: false, explanation:'A revisão destaca que pronome pessoal oblíquo não deve ser usado após preposição.' },
+
+      // === ASSOCIAÇÃO (pares) ===
+      { id: 26, type: 'associacao', stem: 'Associe cada classe de pronome a um exemplo:', pares: [
+          {esq:'Pessoal (reto)', dir:'eu'},
+          {esq:'Pessoal (oblíquo)', dir:'me'},
+          {esq:'Possessivo', dir:'meu'},
+          {esq:'Demonstrativo', dir:'este'}
+        ], explanation:'As classes exemplificadas: reto (eu), oblíquo (me), possessivo (meu), demonstrativo (este).' },
+      { id: 27, type: 'associacao', stem: 'Associe o tipo de grau do adjetivo ao exemplo:', pares: [
+          {esq:'Comparativo de superioridade', dir:'mais alto que'},
+          {esq:'Comparativo de igualdade', dir:'tão alto quanto'},
+          {esq:'Comparativo de inferioridade', dir:'menos alto que'},
+          {esq:'Superlativo absoluto', dir:'altíssimo'}
+        ], explanation:'Exemplos canônicos de cada grau de comparação/intensidade.' },
+
+      // === LACUNAS (seleção) ===
+      { id: 28, type: 'lacunas', stem: 'Complete: O adjetivo é uma palavra que __ o substantivo, indicando __, __ ou __.', blanks:[
+          {choices:['substitui','caracteriza','conjuga'], correct:'caracteriza'},
+          {choices:['quantidade','qualidades','interjeições'], correct:'qualidades'},
+          {choices:['estados','advérbios','conjunções'], correct:'estados'},
+          {choices:['origem','verbo','artigo'], correct:'origem'}
+        ], explanation:'Definição do material: caracteriza o substantivo, indicando qualidades, estados ou origem.' },
+      { id: 29, type: 'lacunas', stem: 'Complete: Os adjetivos flexionam em __ e __.', blanks:[
+          {choices:['tempo','modo','gênero'], correct:'gênero'},
+          {choices:['número','pessoa','voz'], correct:'número'}
+        ], explanation:'A flexão indicada é em gênero e número.' },
+
+      // === MCQs adicionais para fechar 40 ===
+      { id: 30, type: 'mcq', stem: 'Qual alternativa contém APENAS pronomes indefinidos?', options: [
+          {text:'alguém, nenhum, tudo', correct:true},
+          {text:'eu, tu, ele', correct:false},
+          {text:'meu, teu, nosso', correct:false},
+          {text:'este, esse, aquele', correct:false}
+        ], explanation:'“alguém, nenhum, tudo” são indefinidos.' },
+      { id: 31, type: 'mcq', stem: 'Qual opção apresenta uma locução adjetiva?', options: [
+          {text:'amor materno', correct:false},
+          {text:'amor de mãe', correct:true},
+          {text:'amor filial', correct:false},
+          {text:'amor intenso', correct:false}
+        ], explanation:'“de mãe” exerce a função adjetiva (locução adjetiva).' },
+      { id: 32, type: 'vf', stem: 'Superlativo relativo envolve comparação dentro de um grupo.', answer: true, explanation:'Ex.: “o mais dedicado da turma”.' },
+      { id: 33, type: 'vf', stem: '“Bem-educado” não é adjetivo composto.', answer: false, explanation:'É um adjetivo composto, conforme o material.' },
+      { id: 34, type: 'mcq', stem: 'Em “anel de ouro”, “de ouro” funciona como:', options: [
+          {text:'substantivo', correct:false},
+          {text:'locução adjetiva', correct:true},
+          {text:'advérbio', correct:false},
+          {text:'conjunção', correct:false}
+        ], explanation:'Expressão preposicionada com valor de adjetivo.' },
+      { id: 35, type: 'mcq', stem: 'Qual alternativa traz correlação correta entre classe e exemplos?', options: [
+          {text:'Interrogativos: eu, tu, ele', correct:false},
+          {text:'Demonstrativos: este, essa, aquele', correct:true},
+          {text:'Possessivos: alguém, ninguém', correct:false},
+          {text:'Pessoais retos: me, te, se', correct:false}
+        ], explanation:'Demonstrativos: este/essa/aquele; pessoais retos não incluem me/te/se (oblíquos).' },
+      { id: 36, type: 'vf', stem: '“Grande” → “grandes” é exemplo de flexão de número do adjetivo.', answer: true, explanation:'Singular → plural: grande/grandes.' },
+      { id: 37, type: 'mcq', stem: 'Em “As casas ___ são antigas”, qual adjetivo concorda corretamente?', options: [
+          {text:'grande', correct:false},
+          {text:'grandes', correct:true},
+          {text:'grandiz', correct:false},
+          {text:'grando', correct:false}
+        ], explanation:'Concordância no plural: casas grandes.' },
+      { id: 38, type: 'vf', stem: 'Pronomes de tratamento variam conforme o contexto social.', answer: true, explanation:'Ex.: Vossa Senhoria, Vossa Excelência.' },
+      { id: 39, type: 'mcq', stem: 'Qual é o risco de usar “meu/minha” sem contexto claro?', options: [
+          {text:'Pleonasmo', correct:false},
+          {text:'Ambiguidade', correct:true},
+          {text:'Barbarismo', correct:false},
+          {text:'Hiato', correct:false}
+        ], explanation:'O material observa a possibilidade de ambiguidade de referência.' },
+      { id: 40, type: 'mcq', stem: 'Qual alternativa apresenta apenas pronomes interrogativos?', options: [
+          {text:'qual, quanto, quem', correct:true},
+          {text:'meu, teu, nosso', correct:false},
+          {text:'eu, tu, ele', correct:false},
+          {text:'este, esse, aquele', correct:false}
+        ], explanation:'Interrogativos: qual, quanto, quem.' },
+    ];
+
+    // Estado do quiz
+    let round = [];
+    let current = 0;
+    let score = 0;
+
+    const el = {
+      start: document.getElementById('start-screen'),
+      btnStart: document.getElementById('btn-start'),
+      quiz: document.getElementById('quiz-card'),
+      progress: document.getElementById('progress'),
+      bar: document.getElementById('bar'),
+      stem: document.getElementById('question-stem'),
+      extra: document.getElementById('question-extra'),
+      options: document.getElementById('options'),
+      explanation: document.getElementById('explanation'),
+      btnNext: document.getElementById('btn-next'),
+      result: document.getElementById('result-screen'),
+      scoreText: document.getElementById('score-text'),
+      scoreMsg: document.getElementById('score-msg'),
+      btnRestart: document.getElementById('btn-restart'),
+    };
+
+    function newRound() {
+      round = shuffle([...BANK]).slice(0,20);
+      current = 0;
+      score = 0;
+      el.start.classList.add('hidden');
+      el.result.classList.add('hidden');
+      el.quiz.classList.remove('hidden');
+      renderQuestion();
+    }
+
+    function renderQuestion() {
+      const q = round[current];
+      el.progress.textContent = `Questão ${current+1}/20`;
+      el.bar.style.width = `${((current)/20)*100}%`;
+
+      el.stem.textContent = q.stem;
+      el.extra.innerHTML = '';
+      el.options.innerHTML = '';
+      // RESET crítico para permitir cliques na próxima questão
+      el.options.classList.remove('option-disabled');
+      el.explanation.className = 'mt-4 hidden p-4 rounded-xl border';
+      el.explanation.textContent = '';
+      el.btnNext.disabled = true;
+
+      switch(q.type){
+        case 'mcq': renderMCQ(q); break;
+        case 'vf': renderVF(q); break;
+        case 'curta': renderCurta(q); break;
+        case 'associacao': renderAssociacao(q); break;
+        case 'lacunas': renderLacunas(q); break;
+        default: el.options.textContent = 'Tipo de questão não suportado.';
+      }
+    }
+
+    function showExplanation(q, ok){
+      el.explanation.classList.remove('hidden');
+      el.explanation.classList.toggle('border-green-300', ok);
+      el.explanation.classList.toggle('bg-green-50', ok);
+      el.explanation.classList.toggle('border-red-300', !ok);
+      el.explanation.classList.toggle('bg-red-50', !ok);
+      el.explanation.innerHTML = `<strong>${ok? 'Correto!':'Incorreto.'}</strong> ${q.explanation || ''}`;
+      el.btnNext.disabled = false;
+    }
+
+    function lockOptions(){
+      [...el.options.querySelectorAll('button,input,select,textarea')].forEach(n=>{
+        n.disabled = true;
+      });
+      el.options.classList.add('option-disabled');
+    }
+
+    // === Renderizadores ===
+    function renderMCQ(q){
+      const container = document.createElement('div');
+      q.options.forEach((opt, idx)=>{
+        const btn = document.createElement('button');
+        btn.className = 'w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition';
+        btn.innerHTML = `<span class="font-medium">${String.fromCharCode(65+idx)})</span> ${opt.text}`;
+        btn.addEventListener('click', ()=>{
+          const ok = !!opt.correct;
+          if(ok){ btn.classList.add('bg-green-100','border-green-300','animate-pulse'); score++; }
+          else { btn.classList.add('bg-red-100','border-red-300','animate-shake'); }
+          // Marcar as demais
+          q.options.forEach((o, j)=>{
+            if(j!==idx){
+              const sib = container.children[j];
+              sib.classList.add(o.correct? 'bg-green-50':'opacity-60');
+            }
+          });
+          lockOptions();
+          showExplanation(q, ok);
+        });
+        container.appendChild(btn);
+      });
+      el.options.appendChild(container);
+    }
+
+    function renderVF(q){
+      const wrap = document.createElement('div');
+      ['Verdadeiro','Falso'].forEach((label, i)=>{
+        const btn = document.createElement('button');
+        btn.className = 'w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition';
+        btn.textContent = label;
+        btn.addEventListener('click', ()=>{
+          const ok = (i===0) === !!q.answer; // i===0 => Verdadeiro
+          if(ok){ btn.classList.add('bg-green-100','border-green-300','animate-pulse'); score++; }
+          else { btn.classList.add('bg-red-100','border-red-300','animate-shake'); }
+          // Indicar correta/errada nos demais
+          [...wrap.children].forEach((b)=>{ if(b!==btn) b.classList.add('opacity-60'); });
+          lockOptions();
+          showExplanation(q, ok);
+        });
+        wrap.appendChild(btn);
+      });
+      el.options.appendChild(wrap);
+    }
+
+    function renderCurta(q){
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Digite sua resposta';
+      input.className = 'w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+      const btn = document.createElement('button');
+      btn.textContent = 'Verificar';
+      btn.className = 'mt-3 px-4 py-2 rounded-xl bg-indigo-600 text-white';
+
+      const check = ()=>{
+        const val = (input.value||'').trim().toLowerCase();
+        const answers = Array.isArray(q.answer) ? q.answer : [q.answer];
+        const ok = answers.some(a => a.toLowerCase()===val);
+        input.classList.add(ok? 'bg-green-50':'bg-red-50', ok? 'border-green-300':'border-red-300');
+        if(!ok) input.classList.add('animate-shake'); else score++;
+        lockOptions();
+        showExplanation(q, ok);
+      };
+      btn.addEventListener('click', check);
+      input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ check(); }});
+
+      el.options.appendChild(input);
+      el.options.appendChild(btn);
+    }
+
+    function renderAssociacao(q){
+      // Lista esquerda fixa; para cada item, um <select> com opções embaralhadas
+      const choices = shuffle(q.pares.map(p=>p.dir));
+      q.pares.forEach((p, idx)=>{
+        const row = document.createElement('div');
+        row.className = 'grid grid-cols-1 sm:grid-cols-2 gap-3 items-center mb-2';
+        const left = document.createElement('div');
+        left.className = 'px-4 py-3 rounded-xl bg-slate-100';
+        left.textContent = p.esq;
+        const sel = document.createElement('select');
+        sel.className = 'px-3 py-2 rounded-xl border border-slate-300';
+        const opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='— selecione —'; sel.appendChild(opt0);
+        choices.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+        sel.addEventListener('change', ()=>{
+          const ok = sel.value === p.dir;
+          sel.classList.remove('bg-red-50','border-red-300','animate-shake','bg-green-50','border-green-300');
+          sel.classList.add(ok? 'bg-green-50':'bg-red-50', ok? 'border-green-300':'border-red-300');
+          if(!ok) sel.classList.add('animate-shake');
+          // Quando todas as seleções corretas, pontua 1 questão
+          const allSelected = [...el.options.querySelectorAll('select')].every(s=>s.value!=='');
+          if(allSelected){
+            const allOk = q.pares.every((pair,i)=>{
+              const s = el.options.querySelectorAll('select')[i];
+              return s.value===pair.dir;
+            });
+            lockOptions();
+            if(allOk) score++;
+            showExplanation(q, allOk);
+          }
+        });
+        row.appendChild(left);
+        row.appendChild(sel);
+        el.options.appendChild(row);
+      });
+      const hint = document.createElement('p');
+      hint.className = 'text-sm text-slate-500 mt-2';
+      hint.textContent = 'Dica: ao acertar todas as correspondências, a questão será finalizada.';
+      el.options.appendChild(hint);
+    }
+
+    function renderLacunas(q){
+      const line = document.createElement('p');
+      line.className = 'leading-relaxed';
+      // Para cada blank, um <select>
+      let parts = q.stem.split('__');
+      parts.forEach((part, i)=>{
+        line.appendChild(document.createTextNode(part));
+        if(i < q.blanks.length){
+          const sel = document.createElement('select');
+          sel.className = 'mx-1 px-2 py-1 rounded-lg border border-slate-300';
+          const all = shuffle([q.blanks[i].correct, ...q.blanks[i].choices.filter(c=>c!==q.blanks[i].correct)]);
+          const opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='—'; sel.appendChild(opt0);
+          all.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+          sel.addEventListener('change', ()=>{
+            const okHere = sel.value === q.blanks[i].correct;
+            sel.classList.remove('bg-red-50','border-red-300','animate-shake','bg-green-50','border-green-300');
+            sel.classList.add(okHere? 'bg-green-50':'bg-red-50', okHere? 'border-green-300':'border-red-300');
+            if(!okHere) sel.classList.add('animate-shake');
+            // Verificar se todas corretas
+            const allSelected = [...line.querySelectorAll('select')].every(s=>s.value!=='');
+            if(allSelected){
+              const allOk = [...line.querySelectorAll('select')].every((s,idx)=> s.value===q.blanks[idx].correct);
+              lockOptions();
+              if(allOk) score++;
+              showExplanation(q, allOk);
+            }
+          });
+          line.appendChild(sel);
+        }
+      });
+      el.options.appendChild(line);
+    }
+
+    // Navegação
+    el.btnStart.addEventListener('click', newRound);
+    el.btnNext.addEventListener('click', ()=>{
+      current++;
+      if(current>=20){
+        // finalizar
+        el.bar.style.width = '100%';
+        el.quiz.classList.add('hidden');
+        el.result.classList.remove('hidden');
+        const pct = Math.round((score/20)*1000)/10; // uma casa
+        el.scoreText.textContent = `Você acertou ${score} de 20 (${pct}%).`;
+        let msg = '';
+        if(pct > 80){ msg = 'Parabéns! Você está acima da média!'; }
+        else if(pct >= 60){ msg = 'Na média, mas ainda dá para melhorar. Continue praticando!'; }
+        else { msg = 'Você ficou abaixo de 60%. Refaça o quiz para reforçar os conteúdos.'; }
+        el.scoreMsg.textContent = msg;
+      } else {
+        renderQuestion();
+      }
+    });
+
+    el.btnRestart.addEventListener('click', ()=>{
+      el.result.classList.add('hidden');
+      el.start.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
